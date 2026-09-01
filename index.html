@@ -2,7 +2,14 @@
 <html lang="es">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<!-- Configuración para dispositivos móviles y app instalable -->
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="HabitTracker">
+<link rel="manifest" href="manifest.json">
+
 <title>Panel de hábitos - RPG Edition</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -32,17 +39,32 @@
     --xp-color: #F4B740;
     --coin-color: #FFD700;
   }
-  *{box-sizing:border-box;}
-  body{
-    margin:0;
-    background:var(--bg);
-    color:var(--text);
-    font-family:'Inter',sans-serif;
-    padding:24px 30px 60px;
-    min-height:100vh;
+  
+  /* Optimizaciones CSS para Móviles (Responsive & Touch-Friendly) */
+  * {
+    box-sizing: border-box;
+    -webkit-tap-highlight-color: transparent;
   }
-  h1,h2,h3{font-family:'Space Grotesk',sans-serif; margin:0;}
-  .wrap{max-width:1400px; margin:0 auto;}
+
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Inter', sans-serif;
+    padding: 24px 30px 60px;
+    min-height: 100vh;
+    width: 100%;
+    overflow-x: hidden;
+    overscroll-behavior-y: contain;
+  }
+
+  h1, h2, h3 { font-family: 'Space Grotesk', sans-serif; margin: 0; }
+  .wrap { max-width: 1400px; margin: 0 auto; }
+
+  /* Tamaños táctiles mínimos recomendados para elementos interactivos */
+  button, .cell-btn, .habit-title-link, .shop-item, .achievement-card, .cell-progress-container {
+    touch-action: manipulation;
+  }
 
   /* RPG Header Bar */
   .rpg-header{
@@ -352,6 +374,62 @@
   }
 
   .empty{color:var(--muted); font-size:13px; padding:20px;}
+
+  /* ---------------------------------------------------- */
+  /* MEDIA QUERIES (Responsive para dispositivos móviles) */
+  /* ---------------------------------------------------- */
+  @media (max-width: 768px) {
+    body {
+      padding: 12px 8px 40px;
+    }
+
+    .wrap {
+      width: 100%;
+      padding: 0;
+    }
+
+    /* Paneles superiores apilados en una columna */
+    .top-panels {
+      grid-template-columns: 1fr;
+      gap: 12px;
+    }
+
+    /* Fila inferior adaptada a dispositivos móviles */
+    .bottom-row {
+      grid-template-columns: 1fr;
+      gap: 12px;
+    }
+
+    /* Modales adaptados al ancho de pantallas pequeñas */
+    .modal-card {
+      width: 95%;
+      max-width: 95%;
+      padding: 16px;
+      margin: auto;
+      max-height: 85vh;
+      overflow-y: auto;
+    }
+
+    /* Rejilla de logros en columna única */
+    .achievements-grid {
+      grid-template-columns: 1fr;
+    }
+
+    /* Reducción de márgenes en cabeceras móviles */
+    .rpg-header {
+      padding: 12px;
+      gap: 10px;
+    }
+
+    .rpg-xp-container {
+      max-width: 100%;
+      order: 3;
+      width: 100%;
+    }
+    
+    /* Mostrar del-btn en móviles */
+    .del-btn { opacity: 1; }
+  }
 </style>
 </head>
 <body>
@@ -761,10 +839,53 @@ async function loadState(){
   };
 }
 
+// Function to handle localStorage logic without throwing errors in simple environments
+const storageHelper = {
+  get: async (key) => {
+    try {
+      if(window.storage && window.storage.get) return window.storage.get(key, false);
+      return { value: localStorage.getItem(key) };
+    } catch(e) { return null; }
+  },
+  set: async (key, val) => {
+    try {
+      if(window.storage && window.storage.set) return window.storage.set(key, val, false);
+      localStorage.setItem(key, val);
+    } catch(e) {}
+  }
+}
+
+async function loadState(){
+  const res = await storageHelper.get(STORAGE_KEY);
+  if(res && res.value){
+    try {
+      const parsed = JSON.parse(res.value);
+      if(parsed && Array.isArray(parsed.habits)){
+        state = parsed;
+        if(state.xp === undefined) state.xp = 0;
+        if(state.coins === undefined) state.coins = 0;
+        if(state.notes === undefined) state.notes = {};
+        if(state.shopPurchases === undefined) state.shopPurchases = 0;
+        if(state.unlockedAchievements === undefined) state.unlockedAchievements = [];
+        if(state.onboarded === undefined) state.onboarded = false;
+        return;
+      }
+    } catch(e){}
+  }
+  state = {
+    habits: [],
+    entries: {},
+    notes: {},
+    xp: 0,
+    coins: 0,
+    shopPurchases: 0,
+    unlockedAchievements: [],
+    onboarded: false
+  };
+}
+
 async function saveState(){
-  try{
-    await window.storage.set(STORAGE_KEY, JSON.stringify(state), false);
-  }catch(e){}
+  await storageHelper.set(STORAGE_KEY, JSON.stringify(state));
 }
 
 function colorFor(idx){ return PALETTE[idx % PALETTE.length]; }
@@ -816,10 +937,6 @@ function render(){
   renderAchievements();
   renderShop();
   renderRecentAchievementsModal();
-
-  if(!state.onboarded && state.habits.length === 0) {
-    document.getElementById('onboardingModal').classList.add('active');
-  }
 }
 
 function renderHeader(){
@@ -1416,10 +1533,11 @@ function updateTempHabitsUI() {
   document.getElementById('finishMultiHabitBtn').style.display = temporaryHabits.length > 0 ? 'block' : 'none';
 }
 
-function removeTemp(index) {
+// Attach removeTemp to the window object to make it globally accessible
+window.removeTemp = function(index) {
   temporaryHabits.splice(index, 1);
   updateTempHabitsUI();
-}
+};
 
 document.getElementById('finishMultiHabitBtn').addEventListener('click', () => {
   temporaryHabits.forEach(name => {
@@ -1467,6 +1585,13 @@ document.getElementById('nextMonth').addEventListener('click', () => {
 
 (async function init(){
   await loadState();
+  
+  // Condición corregida: el onboarding ahora SÓLO se mostrará 
+  // si el usuario no ha completado el onboarding Y no tiene hábitos.
+  if(!state.onboarded && state.habits.length === 0) {
+    document.getElementById('onboardingModal').classList.add('active');
+  }
+
   render();
 })();
 </script>
